@@ -3,7 +3,7 @@
 Ruby gem to make `ThreadLocalVars` easy to use, with either "accessor" methods,
 or instance methods.
 
-Build Status:  TBD
+Build Status:  [![CircleCI](https://dl.circleci.com/status-badge/img/gh/aks/thread_local_var_accessors/tree/main.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/aks/thread_local_var_accessors/tree/main)
 
 Just as Rails provides _attribut_ accessor methods, eg: `attr_accessor`,
 `attr_reader`, and `attr_writer`, this [module](module) provides the following
