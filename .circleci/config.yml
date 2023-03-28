@@ -1,0 +1,135 @@
+# Ruby CircleCI 2.0 configuration file for +thread_local_var_accessors+
+#
+# Check https://circleci.com/docs/2.0/language-ruby/ for more details
+#
+version: 2.1
+
+defaults: &DEFAULTS
+  resource_class: small
+  docker:
+    - image: cimg/ruby:2.7
+
+      environment:
+        BUNDLE_JOBS: 3
+        BUNDLE_RETRY: 3
+        BUNDLE_PATH: vendor/bundle
+
+  working_directory: ~/repo
+
+aliases:
+  attach_workspace_to_repo: &attach_workspace_to_repo
+    attach_workspace:
+      at: ~/repo
+
+  set_bundler_version: &set_bundler_version
+    run:
+      name: Set_Bundler_Version
+      command: ./.circleci/helpers/set_bundler_version.sh
+
+  install_bundler: &install_bundler
+    run:
+      name: Install_Bundler
+      command: gem install bundler
+
+  configure_bundler: &configure_bundler
+    run:
+      name: Configure_Bundler
+      command: bundle config --local path /usr/local/bundle
+
+  install_dependencies: &install_dependencies
+    run:
+      name: Install_Dependencies
+      command: bundle install --jobs=4 --retry=3 --path vendor/bundle
+
+  save_gem_cache: &save_gem_cache
+    save_cache:
+      paths:
+        - ./vendor/bundle
+      key: gem-cache-{{ checksum "thread_local_var_accessors.gemspec" }}
+
+  restore_gem_cache: &restore_gem_cache
+    restore_cache:
+      keys:
+        - gem-cache-{{ checksum "thread_local_var_accessors.gemspec" }}
+        - gem-cache-
+
+  run_tests: &run_tests
+    run:
+      name: Run_Tests
+      command: |
+        mkdir /tmp/test-results
+        TEST_FILES="$(circleci tests glob 'spec/**/*_spec.rb' | circleci tests split --split-by=timings)"
+
+        bundle exec rspec --format RspecJunitFormatter \
+                          --out /tmp/test-results/rspec.xml \
+                          --format progress \
+                          $TEST_FILES
+
+
+  save_test_results: &save_test_results
+
+  build_package: &build_package
+    run:
+      name: Build_Package
+      command: |
+        bundle exec rake clean
+        bundle exec rake build
+
+jobs:
+  build:
+    <<: *DEFAULTS
+
+    steps:
+      - checkout
+      - *attach_workspace_to_repo
+      - *restore_gem_cache
+      - *set_bundler_version
+      - *install_bundler
+      - *configure_bundler
+      - *install_dependencies
+      - *save_gem_cache
+      - *run_tests
+
+      - store_test_results:
+          path: /tmp/test-results
+
+      - store_artifacts:
+          path: /tmp/test-results
+          destination: test-results
+
+      - *build_package
+
+      - persist_to_workspace:
+          root: ~/repo
+          paths:
+            - pkg/thread_local_var_accessors*.gem
+            - vendor/bundle
+
+  release:
+    <<: *DEFAULTS
+    steps:
+      - checkout
+      - *attach_workspace_to_repo
+      - *restore_gem_cache
+      - *set_bundler_version
+      - *install_bundler
+      - *configure_bundler
+      - *install_dependencies
+      - *save_gem_cache
+      - *build_package
+
+      - deploy:
+          name: Release and push
+          command: bundle exec rake install
+
+workflows:
+  version: 2
+  bundle_build_test_release:
+    jobs:
+      - build
+      - release:
+          requires:
+            - build
+          filters:
+            branches:
+              only: main
