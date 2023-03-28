@@ -98,7 +98,9 @@
 
 require 'concurrent-ruby'
 
+# methods for making usage of ThreadLocalVars easy
 module ThreadLocalVarAccessors
+  # @!visibility private
   module MyRefinements
     # allow to_sym to be called on either a String or a Symbol
     refine Symbol do
@@ -152,12 +154,12 @@ module ThreadLocalVarAccessors
     instance_variable_get(name.to_ivar)&.value
   end
 
-  def tlv_set(name, value=nil, &block)
+  def tlv_set(name, value = nil, &block)
     var = instance_variable_get(name.to_ivar) || tlv_new(name)
     tlv_set_var(var, value, &block)
   end
 
-  def tlv_set_once(name, value=nil, &block)
+  def tlv_set_once(name, value = nil, &block)
     if (var = instance_variable_get(name.to_ivar)) && !var.value.nil?
       var.value
     elsif var # var is set, but its value is nil
@@ -173,6 +175,7 @@ module ThreadLocalVarAccessors
     instance_variable_set(name.to_ivar, Concurrent::ThreadLocalVar.new)
   end
 
+  # @!visibility private
   def self.included(base)
     base.extend(ClassMethods)
   end
