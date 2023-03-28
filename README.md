@@ -70,15 +70,18 @@ There is a block form to `tls_set`:
 In addition, there is also a `tlv_set_once` method that can be used to set
 a TLV value only if has not currently be set already.
 
-    ltv_set_once(name, value)
+    tlv_set_once(name, value)
     
-    ltv_set_once(name) { |old_val| new_value }
+    tlv_set_once(name) { |old_val| new_value }
 
-For `tlv_accessor` instance variables, it's possible to use the `||=` operator. Eg:
+For `tlv_accessor` instance variables, it's possible to use the assign operators, eg: `+=`, or `||=`.
+For example:
 
-    tlv_accessor :timeout
+    tlv_accessor :timeout, :count
     
     self.timeout ||= DEFAULT_TIMEOUT
+    
+    self.count += 1
 
 ### TLV Name Arguments
 
