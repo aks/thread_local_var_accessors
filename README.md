@@ -105,17 +105,30 @@ Then:
 
 ## Usage
 
-Use the class methods to declare instance getter and setter methods:
+To use the class methods, they must be included into the current module or class, with:
 
-    tlv_reader   :name1
-    tlv_writer   :name2
-    tlv_accessor :name3, :name4
+    class MyNewClass
+      include ThreadLocalVarAccessors
+        ...
+    end
+    
+With the include above, you can use the class methods to declare instance getter and setter methods:
+
+    class MyNewClass
+      include ThreadLocalVarAccessors
+
+      tlv_reader   :name1
+      tlv_writer   :name2
+      tlv_accessor :name3, :name4
+      
+    end
     
 The above invocations: 
+
 - create reader methods for `name1`, `name3`, and `name4`.
 - create writer methods for `name2`, `name3`, and `name4`.
 
-The writer methods accept a value as the second argument, or from the result of an associated block.
+The writer methods accept a value as the second argument, or from the result of an optional, associated block.
 
 Note: to use the read-and-operate operators, eg: `+=`, `-=`, `||=`, etc., the object must have both a reader and writer method.  In other words, it needs to have been created as an `tlv_accessor`.
 
@@ -130,8 +143,16 @@ Alternative block forms:
     tlv_set(name)      { |oldval| newval }
     tlv_set_once(name) { |oldval| newval }
 
-
 In all cases, the `name` can be a string or symbol, with or without a leading `@`.
+
+Ultimately, these methods are all doing these basic accesses of the corresponding instance variables:
+
+    @name1 ||= ThreadLocalVar.new
+    @name1.value = per_thread_value
+    ...
+    @name1.value # returns the per_thread_value
+    
+If you prefer the style above, then you don't really need these accessor methods. 
 
 ### Example Usage
 
