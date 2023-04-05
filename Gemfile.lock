@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    thread_local_var_accessors (0.1.1)
+    thread_local_var_accessors (0.1.2)
       concurrent-ruby
 
 GEM
