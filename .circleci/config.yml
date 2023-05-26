@@ -120,7 +120,7 @@ jobs:
 
       - deploy:
           name: Release and push
-          command: bundle exec rake release
+          command: bundle exec rake install
 
 workflows:
   version: 2
