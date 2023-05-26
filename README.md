@@ -49,12 +49,22 @@ becomes very simple:
     timeout  # fetches the current TLV value, unique to each thread
     ...
     self.timeout = 0.5  # stores the TLV value just for this thread
+    
+The `tlv_init` method creates a _new_ TLVar and sets its default value.
+
+Note that the default value is used when any thread evaluates the instance 
+variable and there has been no thread-specific value assignment.
+
+The TLV default value is used across *all* threads.
+
+    tlv_init(:timeout, _default_)
+    tlv_init(:timeout) { _default_ }
 
 Alternative ways to initialize:
 
     tlv_set(:timeout, 0)
 
-    tlv_set(:timeout) # ensure that @timeout is initialized to an [TLV](TLV)
+    tlv_set(:timeout) # ensure that @timeout is initialized to an TLV
     @timeout.value = 0
 
 The following methods are used within the above reader, writer, accessor
