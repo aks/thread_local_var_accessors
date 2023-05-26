@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    thread_local_var_accessors (0.1.2)
+    thread_local_var_accessors (1.0.0)
       concurrent-ruby
 
 GEM
@@ -87,4 +87,4 @@ DEPENDENCIES
   yard
 
 BUNDLED WITH
-   2.4.6
+   2.4.12

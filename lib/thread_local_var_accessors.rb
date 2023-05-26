@@ -31,17 +31,66 @@
 # becomes very simple:
 #
 #     tlv_accessor :timeout
-#     ...
+#
+# Create a new TLV instance with an associated default, applied across all threads.
+#
+#     tlv_init :timeout, default_timeout
+#
+#     tlv_init :timeout { default_timeout }
+#
+#
+# Reference the current thread value for the TLV variable:
+#
 #     timeout  # fetches the current TLV value, unique to each thread
-#     ...
+#
+# Assign the current thread value for the TLV variable:
+#
 #     self.timeout = 0.5  # stores the TLV value just for this thread
 #
-# Alternative ways to initialize:
+# Alternative ways to initialize the thread-local value:
 #
 #     ltv_set(:timeout, 0)
 #
 #     ltv_set(:timeout) # ensure that @timeout is initialized to an LTV
+#
 #     @timeout.value = 0
+#
+# Each thread-local instance can be independently assigned a value, which defaults
+# to the _default_ value, or _block_, that was associated with the original
+# `ThreadLocalVar.new` method.  This module also provides an easy way to do this:
+#
+# Initializes a TLV on the `@timeout` instance variable with a default value of
+# 0.15 seconds:
+#
+#     tlv_init(:timeout, 0.15)
+#
+# This does the same, but uses a block (a Proc object) to possibly return a
+# dynamic default value, as the proc is invoked each time the TLV instance is
+# evaluted in a Thread.
+#
+#     tlv_init(:sleep_time) { computed_sleep_time }
+#
+# The block-proc is evaluated at the time the default value is needed, not when
+# the TLV is assigned to the instance variable.  In other words, much later
+# during process, when the instance variable value is evaluated, _that_ is when
+# the default block is evaluated.
+#
+# Note that `tlv_init` does not assign the thread-local value; it assigns the
+# _instance variable_ to a new TLV with the given default.  If any thread
+# evaluates that instance variable, the default value will be returned unless
+# and until each thread associates a new, thread-local value with the TLV.
+#
+# The default for an existing TLV can be redefined, using either an optional
+# default value, or an optional default block.
+#
+#
+#     tlv_set_default(:timeout, new_default)
+#     tlv_set_default(:timeout) { new_default }
+#
+# The default for an existing TLV can also be obtained, independently of the
+# current thread's local value, if any:
+#
+#     tlv_default(:timeout)
 #
 # The following methods are used within the above reader, writer, accessor
 # methods:
@@ -86,7 +135,8 @@
 #
 # Each thread referencing the instance variable, will get the same TLV object,
 # but when the `.value` method is invoked, each thread will receive the initial
-# value, or whatever local value may have been assigned subsequently.
+# value, or whatever local value may have been assigned subsequently, or the
+# default, which is the same across all the threads.
 #
 # To obtain the value of such an TLV instance variable, do:
 #
@@ -170,9 +220,39 @@ module ThreadLocalVarAccessors
   end
 
   # @param [String|Symbol] name the TLV name
+  # @param [Object|nil] default the optional default value
+  # @param [Proc] block the optional associated block
   # @return [ThreadLocalVar] a new TLV set in the instance variable
-  def tlv_new(name)
-    instance_variable_set(name.to_ivar, Concurrent::ThreadLocalVar.new)
+  # @example Default argument
+  #   tlv_init(:ivar, default_value)
+  # @example Default block
+  #   tlv_init(:ivar) { default_value }
+  def tlv_init(name, default=nil, &block)
+    instance_variable_set(name.to_ivar, Concurrent::ThreadLocalVar.new(default, &block))
+  end
+  alias tlv_new tlv_init
+
+  # Fetches the default value for the TLVar
+  def tlv_default(name)
+    instance_variable_get(name.to_ivar)&.send(:default)
+  end
+
+  # Sets the default value or block for the TLV _(which is applied across all threads)_
+  def tlv_set_default(name, default=nil, &block)
+    tlv = instance_variable_get(name.to_ivar)
+    if tlv
+      raise ArgumentError, "tlv_set_default: can only use a default or a block, not both" if default && block
+
+      if block
+        tlv.instance_variable_set(:@default_block, block)
+        tlv.instance_variable_set(:@default, nil)
+      else
+        tlv.instance_variable_set(:@default_block, nil)
+        tlv.instance_variable_set(:@default, default)
+      end
+    else
+      tlv_init(name, default, &block)
+    end
   end
 
   # @!visibility private

@@ -199,14 +199,166 @@ RSpec.describe ThreadLocalVarAccessors do
     end
 
     describe 'tlv_new' do
-      subject { tlv.tlv_new(ivar_name) }
+      context 'without a default value' do
+        subject { tlv.tlv_new(ivar_name) }
 
-      it 'creates a new Conncurrent::ThreadLocalVar object' do
-        expect(subject).to be_a(Concurrent::ThreadLocalVar)
+        it 'creates a new Conncurrent::ThreadLocalVar object' do
+          expect(subject).to be_a(Concurrent::ThreadLocalVar)
+        end
+
+        it 'creates a TLV with no value' do
+          expect(subject.value).to be_nil
+        end
+
+        it 'has a default that is nil' do
+          expect(tlv.tlv_default(ivar_name)).to be_nil
+        end
       end
 
-      it 'creates a TLV with no value' do
-        expect(subject.value).to be_nil
+      context 'with a default value' do
+        subject { tlv.tlv_new(ivar_name, default_value) }
+        let(:default_value) { 42 }
+
+        it 'creates a new Conncurrent::ThreadLocalVar object' do
+          expect(subject).to be_a(Concurrent::ThreadLocalVar)
+        end
+
+        it 'creates a TLV with the default value' do
+          expect(subject.value).to eq default_value
+        end
+
+        it 'has a local value separate from the default' do
+          subject
+          tlv.tlv_set(ivar_name, 56)
+          expect(tlv.tlv_get(ivar_name)).to eq 56
+          expect(tlv.tlv_default(ivar_name)).to eq default_value
+        end
+
+        it 'has a default matching the original default value' do
+          subject
+          expect(tlv.tlv_default(ivar_name)).to eq default_value
+        end
+      end
+
+      context 'with a default block' do
+        subject { tlv.tlv_new(ivar_name, &default_block) }
+        let(:default_value) { 99 }
+        let(:default_block) { -> { default_value } }
+
+        it 'creates a new Conncurrent::ThreadLocalVar object' do
+          expect(subject).to be_a(Concurrent::ThreadLocalVar)
+        end
+
+        it 'creates a TLV with the default value' do
+          expect(subject.value).to eq default_value
+        end
+
+        it 'has a local value separate from the default' do
+          subject
+          tlv.tlv_set(ivar_name, 56)
+          expect(tlv.tlv_get(ivar_name)).to eq 56
+        end
+
+        it 'has a default matching the original default value' do
+          subject
+          expect(tlv.tlv_default(ivar_name)).to eq default_value
+        end
+      end
+    end
+
+    describe "#tlv_default" do
+      subject { tlv.tlv_default(ivar_name) }
+
+      context 'with no defined default' do
+        it { is_expected.to be_nil}
+      end
+
+      context 'with a defined default' do
+        before { tlv.tlv_init(ivar_name, 42) }
+
+        it { is_expected.to eq 42 }
+
+        context 'with a distinct value' do
+          before { tlv.tlv_set(ivar_name, 99) }
+          it { is_expected.to eq 42 }
+
+          it 'keeps the current thread value separate from the default' do
+            expect(tlv.tlv_get(ivar_name)).to eq 99
+          end
+        end
+      end
+    end
+
+    describe '#tlv_set_default' do
+      context 'with default value' do
+        subject { tlv.tlv_set_default(ivar_name, default) }
+        let(:default) { 44 }
+
+        it 'assigns the default on the existing TLVar' do
+          subject
+          expect(tlv.tlv_default(ivar_name)).to eq default
+        end
+
+        context 'with existing TLVars' do
+          before { subject }
+          it 'does not create new TLVar instance' do
+            expect(tlv).to_not receive(:tlv_init)
+            subject
+          end
+        end
+
+        context 'with new TLVar' do
+          before { tlv.instance_variable_set("@#{ivar_name}".to_sym, nil) }
+
+          it 'creates a new TLV' do
+            expect(tlv).to receive(:tlv_init)
+            subject
+          end
+
+          it 'installs the default' do
+            subject
+            expect(tlv.tlv_default(ivar_name)).to eq 44
+          end
+        end
+      end
+
+      context 'with default block' do
+        subject { tlv.tlv_set_default(ivar_name) { default } }
+        let(:default) { 44 }
+
+        it 'assigns the default on the existing TLVar' do
+          subject
+          expect(tlv.tlv_default(ivar_name)).to eq default
+        end
+
+        context 'with existing TLVars' do
+          before { subject }
+          it 'does not create new TLVar instance' do
+            expect(tlv).to_not receive(:tlv_init)
+            subject
+          end
+        end
+
+        context 'with new TLVar' do
+          before { tlv.instance_variable_set("@#{ivar_name}".to_sym, nil) }
+
+          it 'creates a new TLV' do
+            expect(tlv).to receive(:tlv_init)
+            subject
+          end
+
+          it 'installs the default' do
+            subject
+            expect(tlv.tlv_default(ivar_name)).to eq 44
+          end
+        end
+
+        context 'with both a default and a default block' do
+          subject { tlv.tlv_set_default(ivar_name, default) { default } }
+          it 'raises an error' do
+            expect { subject }.to raise_error(ArgumentError)
+          end
+        end
       end
     end
   end
