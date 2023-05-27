@@ -1,11 +1,15 @@
 # frozen_string_literal: true
 
+require 'concurrent-ruby'
+
 # This module has methods making it easy to use the Concurrent::ThreadLocalVar
 # as instance variables.  This makes instance variables using this code as
 # actually thread-local, without also leaking memory over time.
 #
 # See [Why Concurrent::ThreadLocalVar](https://github.com/ruby-concurrency/concurrent-ruby/blob/master/lib/concurrent-ruby/concurrent/atomic/thread_local_var.rb#L10-L17)
 # to understand why we use TLVs instead of `Thread.current.thread_variable_(set|get)`
+#
+# Class Methods
 #
 # The following class methods declare `Concurrent::ThreadLocalVar` reader,
 # writer, and accessors with these class methods:
@@ -32,57 +36,84 @@
 #
 #     tlv_accessor :timeout
 #
+# Instance Methods
+#
 # Create a new TLV instance with an associated default, applied across all threads.
 #
-#     tlv_init :timeout, default_timeout
+#     tlv_new :timeout, default_timeout
+#     tlv_new :timeout { default_timeout }
 #
-#     tlv_init :timeout { default_timeout }
+# This method _always_ assignes the instance variable.  It is equivalent to:
 #
-#
-# Reference the current thread value for the TLV variable:
-#
-#     timeout  # fetches the current TLV value, unique to each thread
+#     @instance_var = ThreadLocalVar.new(default)
+#     @instance_var = ThreadLocalVar.new { default }
 #
 # Assign the current thread value for the TLV variable:
 #
 #     self.timeout = 0.5  # stores the TLV value just for this thread
 #
+# which is equivalent to:
+#
+#     @timeout ||= ThreadLocalVar.new
+#     @timeout.value = 0.5
+#
+# Reference the current thread value for the TLV variable:
+#
+#     timeout  # fetches the current TLV value, unique to each thread
+#
+# which is the same as:
+#
+#     @timeout ||= ThreadLocalVar.new
+#     @timeout.value
+#
 # Alternative ways to initialize the thread-local value:
 #
-#     ltv_set(:timeout, 0)
-#
-#     ltv_set(:timeout) # ensure that @timeout is initialized to an LTV
-#
-#     @timeout.value = 0
+#     tlv_set(:timeout, 0)
+#     tlv_set(:timeout) # ensure that @timeout is initialized to an LTV
+#     tlv_set_once(:timeout, value) # set timeout only if it isn't already set
 #
 # Each thread-local instance can be independently assigned a value, which defaults
 # to the _default_ value, or _block_, that was associated with the original
-# `ThreadLocalVar.new` method.  This module also provides an easy way to do this:
+# `ThreadLocalVar.new` method.  This module also provides an easy way to do this.
 #
 # Initializes a TLV on the `@timeout` instance variable with a default value of
 # 0.15 seconds:
 #
-#     tlv_init(:timeout, 0.15)
+#     tlv_new(:timeout, 0.15)
 #
 # This does the same, but uses a block (a Proc object) to possibly return a
 # dynamic default value, as the proc is invoked each time the TLV instance is
 # evaluted in a Thread.
 #
-#     tlv_init(:sleep_time) { computed_sleep_time }
+#     tlv_new(:sleep_time) { computed_sleep_time }
 #
 # The block-proc is evaluated at the time the default value is needed, not when
 # the TLV is assigned to the instance variable.  In other words, much later
 # during process, when the instance variable value is evaluated, _that_ is when
 # the default block is evaluated.
 #
+# The `tlv_new` method always assigns a new TLVar to the named instance variable.
+#
+# There is a corresponding method to either create a new TLVar instance or
+# assign the default value to the existing TLVar instance: `tlv_init`.
+#
+#     tlv_init(IVAR, DEFAULT)
+#     tlv_init(IVAR) { DEFAULT }
+#
 # Note that `tlv_init` does not assign the thread-local value; it assigns the
 # _instance variable_ to a new TLV with the given default.  If any thread
 # evaluates that instance variable, the default value will be returned unless
-# and until each thread associates a new, thread-local value with the TLV.
+# and until the current thread associates a new, thread-local value with the TLV
+# instance.
+#
+# The purpose of `tlv_init` is to make the initialization of a TLVar be idempotent:
+# a. if the TLVar does not yet exist, it is created with the default value.
+# b. if the TLVar already exists, it's default value is set.
+#
+# In neither case are any thread-local value set; only the default.
 #
 # The default for an existing TLV can be redefined, using either an optional
 # default value, or an optional default block.
-#
 #
 #     tlv_set_default(:timeout, new_default)
 #     tlv_set_default(:timeout) { new_default }
@@ -145,10 +176,7 @@
 # To assign a new value to an TLV instance:
 #
 #     @timeout.value = new_value
-
-require 'concurrent-ruby'
-
-# methods for making usage of ThreadLocalVars easy
+#
 module ThreadLocalVarAccessors
   # @!visibility private
   module MyRefinements
@@ -200,17 +228,26 @@ module ThreadLocalVarAccessors
   end
 
   # instance methods
+  # Returns the value of the TLV instance variable, if any.
   def tlv_get(name)
     instance_variable_get(name.to_ivar)&.value
   end
 
+  # sets the thread-local value of the TLV instance variable, creating
+  # it if necessary. This method is equivalent to:
+  #     @name ||= ThreadLocalVar.new
+  #     @name.value = block_given? ? yield : value
   def tlv_set(name, value = nil, &block)
     var = instance_variable_get(name.to_ivar) || tlv_new(name)
     tlv_set_var(var, value, &block)
   end
 
+  # Sets the thread-local value of the TLV instance variable, but only
+  # if it is not already set.  It is equivalent to:
+  #     @name ||= ThreadLocalVar.new
+  #     @name.value ||= block_given? yield : value
   def tlv_set_once(name, value = nil, &block)
-    if (var = instance_variable_get(name.to_ivar)) && !var.value.nil?
+    if (var = instance_variable_get(name.to_ivar)) && !var&.value.nil?
       var.value
     elsif var # var is set, but its value is nil
       tlv_set_var(var, value, &block)
@@ -219,26 +256,32 @@ module ThreadLocalVarAccessors
     end
   end
 
-  # @param [String|Symbol] name the TLV name
-  # @param [Object|nil] default the optional default value
-  # @param [Proc] block the optional associated block
-  # @return [ThreadLocalVar] a new TLV set in the instance variable
-  # @example Default argument
-  #   tlv_init(:ivar, default_value)
-  # @example Default block
-  #   tlv_init(:ivar) { default_value }
-  def tlv_init(name, default=nil, &block)
+  # Creates a new TLVar with the given default value or block.
+  # Equivalent to:
+  #     @name = ThreadLocalVar.new(block_given? ? yield : default)
+  def tlv_new(name, default=nil, &block)
     instance_variable_set(name.to_ivar, Concurrent::ThreadLocalVar.new(default, &block))
   end
-  alias tlv_new tlv_init
+
+  # Creates a new TLVar with a default, or assigns the default value to an
+  # existing TLVar, without affecting any existing thread-local values.
+  # Equivalent to:
+  #     @name ||= ThreadLocalVar.new
+  #     @name.instance_variable_set(:@default, block_given? ? yield : default)
+  def tlv_init(name, default=nil, &block)
+    tlv_set_default(name, default, &block)
+  end
 
   # Fetches the default value for the TLVar
+  # Equivalent to:
+  #     @name&.send(:default)
   def tlv_default(name)
     instance_variable_get(name.to_ivar)&.send(:default)
   end
 
-  # Sets the default value or block for the TLV _(which is applied across all threads)_
-  def tlv_set_default(name, default=nil, &block)
+  # Sets the default value or block for the TLV _(which is applied across all threads)_.
+  # Creates a new TLV if the instance variable is not initialized.
+  def tlv_set_default(name, default=nil, &block)1
     tlv = instance_variable_get(name.to_ivar)
     if tlv
       raise ArgumentError, "tlv_set_default: can only use a default or a block, not both" if default && block
@@ -250,8 +293,9 @@ module ThreadLocalVarAccessors
         tlv.instance_variable_set(:@default_block, nil)
         tlv.instance_variable_set(:@default, default)
       end
+      tlv
     else
-      tlv_init(name, default, &block)
+      tlv_new(name, default, &block)
     end
   end
 
