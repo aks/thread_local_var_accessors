@@ -230,16 +230,34 @@ module ThreadLocalVarAccessors
   # instance methods
   # Returns the value of the TLV instance variable, if any.
   def tlv_get(name)
-    instance_variable_get(name.to_ivar)&.value
+    tlv_get_var(name)&.value
   end
 
-  # sets the thread-local value of the TLV instance variable, creating
-  # it if necessary. This method is equivalent to:
-  #     @name ||= ThreadLocalVar.new
-  #     @name.value = block_given? ? yield : value
+  # @return [ThreadLocalVar] the TLV, if any, of the named instance variable.
+  def tlv_get_var(name)
+    var = instance_variable_get(name.to_ivar)
+    var if var.is_a?(Concurrent::ThreadLocalVar)
+  end
+
+  # If the instance variable is already a TLV, then set it's value to the
+  # given value, or the value returned by the block, if any.  If the
+  # instance variable is not a TLV, then create a new TLV, initializing
+  # it's default value with the given value, or the value returned by the block,
+  # if any, then, returning it's local value -- which returns the default value.
+  #
+  # This method is equivalent to:
+  #     if @name.is_a?(ThreadLocalVar)
+  #       @name.value = block_given? ? yield : value
+  #     else
+  #       @name = ThreadLocalVar(value, &block)
+  #     end
+  # @return [Object] the value of the TLV instance variable
   def tlv_set(name, value = nil, &block)
-    var = instance_variable_get(name.to_ivar) || tlv_new(name)
-    tlv_set_var(var, value, &block)
+    if (var = tlv_get_var(name))
+      tlv_set_var(var, value, &block)
+    else
+      tlv_new(name, value, &block).value
+    end
   end
 
   # Sets the thread-local value of the TLV instance variable, but only
@@ -247,12 +265,12 @@ module ThreadLocalVarAccessors
   #     @name ||= ThreadLocalVar.new
   #     @name.value ||= block_given? yield : value
   def tlv_set_once(name, value = nil, &block)
-    if (var = instance_variable_get(name.to_ivar)) && !var&.value.nil?
+    if (var = tlv_get_var(name))&.value
       var.value
     elsif var # var is set, but its value is nil
       tlv_set_var(var, value, &block)
-    else # var is not set
-      tlv_set_var(tlv_new(name), value, &block)
+    else # var is not set, initialize it
+      tlv_new(name, value, &block).value
     end
   end
 
@@ -260,27 +278,38 @@ module ThreadLocalVarAccessors
   # Equivalent to:
   #     @name = ThreadLocalVar.new(block_given? ? yield : default)
   def tlv_new(name, default=nil, &block)
-    instance_variable_set(name.to_ivar, Concurrent::ThreadLocalVar.new(default, &block))
+    instance_variable_set(
+      name.to_ivar,
+      Concurrent::ThreadLocalVar.new(default, &block)
+    )
   end
 
   # Creates a new TLVar with a default, or assigns the default value to an
   # existing TLVar, without affecting any existing thread-local values.
+  # Returns the value of the new TLVar.
   # Equivalent to:
   #     @name ||= ThreadLocalVar.new
   #     @name.instance_variable_set(:@default, block_given? ? yield : default)
+  #     @name.value
   def tlv_init(name, default=nil, &block)
     tlv_set_default(name, default, &block)
+    tlv_get(name)
   end
 
-  # Fetches the default value for the TLVar
-  # Equivalent to:
-  #     @name&.send(:default)
+  # Fetches the default value for the TLVar at the ivar
   def tlv_default(name)
-    instance_variable_get(name.to_ivar)&.send(:default)
+    tlv_get_default(tlv_get_var(name))
+  end
+
+  # gets the default value from a TLV
+  # this masks the private ThreadLocalVar#default method
+  def tlv_get_default(tlv)
+    tlv&.send(:default)
   end
 
   # Sets the default value or block for the TLV _(which is applied across all threads)_.
   # Creates a new TLV if the instance variable is not initialized.
+  # @return [Object] the effective default value of the TLV instance variable
   def tlv_set_default(name, default=nil, &block)1
     tlv = instance_variable_get(name.to_ivar)
     if tlv
@@ -295,8 +324,9 @@ module ThreadLocalVarAccessors
       end
       tlv
     else
-      tlv_new(name, default, &block)
+      tlv = tlv_new(name, default, &block)
     end
+    tlv_get_default(tlv)
   end
 
   # @!visibility private
