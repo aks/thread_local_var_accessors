@@ -124,7 +124,7 @@ RSpec.describe ThreadLocalVarAccessors do
     let(:tlv_no_default) { Concurrent::ThreadLocalVar.new }
     let(:tlv) { tlv_no_default }
 
-    describe '.tlv_get' do
+    describe '#tlv_get' do
       subject { test_tlv.tlv_get(ivar_name) }
 
       it "returns the instance variable's value" do
@@ -135,33 +135,88 @@ RSpec.describe ThreadLocalVarAccessors do
       context 'when there is no instance variable' do
         it { is_expected.to be_nil }
       end
-    end
 
-    describe 'tlv_set' do
-      shared_examples_for 'tlv_set' do
-        it 'returns the value being set' do
-          expect(subject).to eq ivar_value
-        end
-
-        it 'sets the instance variable of the given name' do
-          test_tlv.instance_variable_set("@#{ivar_name}".to_sym, nil)
-          subject
-          expect(ivar_value).to eq expected_value
-        end
-      end
-
-      context 'when given a value' do
-        subject { test_tlv.tlv_set(ivar_name, expected_value) }
-        it_behaves_like 'tlv_set'
-      end
-
-      context 'when given a block' do
-        subject { test_tlv.tlv_set(ivar_name) { expected_value } }
-        it_behaves_like 'tlv_set'
+      context 'when the instance variables is not a TLV' do
+        before { test_tlv.instance_variable_set(ivar_sym, 'other value') }
+        it { is_expected.to be_nil }
       end
     end
 
-    describe '.tlv_set_once' do
+    describe '#tlv_get_var' do
+      subject { test_tlv.tlv_get_var(ivar_name) }
+
+      context 'when there is no value' do
+        it { is_expected.to be_nil }
+      end
+
+      context 'when there is an existing TLV in the instance' do
+        before { test_tlv.tlv_set(ivar_name, 'cool')}
+        it { is_expected.to be_a(Concurrent::ThreadLocalVar) }
+      end
+
+      context 'when the instance variable is not a TLV' do
+        before { test_tlv.instance_variable_set(ivar_sym, 'other value') }
+        it { is_expected.to be_nil }
+      end
+    end
+
+    describe '#tlv_set' do
+      shared_examples_for 'tlv_set' do |use_block = nil|
+        context "testing tlv_set using #{use_block ? 'a block' : 'a value'}" do
+          if use_block
+            subject { test_tlv.tlv_set(ivar_name) { expected_value } }
+          else
+            subject { test_tlv.tlv_set(ivar_name, expected_value) }
+          end
+
+          it 'returns the value being set' do
+            expect(subject).to eq ivar_value
+          end
+
+          it 'sets the instance variable of the given name' do
+            test_tlv.instance_variable_set(ivar_sym, nil)
+            subject
+            expect(ivar_value).to eq expected_value
+          end
+
+          context 'when there is no existing value of the instance variable' do
+            before { test_tlv.instance_variable_set(ivar_sym, nil) }
+
+            it 'invokes tlv_new' do
+              expect(test_tlv).to receive(:tlv_new).
+                with(ivar_name, anything).
+                and_call_original
+              subject
+            end
+          end
+
+          context 'when there is an existing TLV' do
+            before { test_tlv.tlv_new(ivar_name, 'default') }
+
+            it 'does not invoke tlv_new' do
+              expect(test_tlv).to_not receive(:tlv_new)
+              subject
+            end
+          end
+
+          context 'when there is a non-TLV value' do
+            it 'invokes tlv_new and overrides the current non-TLV value' do
+              expect(test_tlv).to receive(:tlv_new).
+                with(ivar_name, anything).
+                and_call_original
+              subject
+            end
+
+            it { is_expected.to eq expected_value }
+          end
+        end
+      end
+
+      it_behaves_like 'tlv_set', false # use arg
+      it_behaves_like 'tlv_set', true  # use block
+    end
+
+    describe '#tlv_set_once' do
       subject { test_tlv.tlv_set_once(ivar_name, expected_value) }
 
       let(:old_value) { 99 }
@@ -220,7 +275,7 @@ RSpec.describe ThreadLocalVarAccessors do
       end
     end
 
-    describe 'tlv_new' do
+    describe '#tlv_new' do
       context 'without a default value' do
         subject { test_tlv.tlv_new(ivar_name) }
 
@@ -311,59 +366,63 @@ RSpec.describe ThreadLocalVarAccessors do
       end
     end
 
-    describe '#tlv_set_default' do
-      let(:test_default_value_example) do
-        test_tlv.tlv_set_default(ivar_name, default)
-      end
-      let(:test_default_block_example) do
-        test_tlv.tlv_set_default(ivar_name) { default }
-      end
-      let(:default) { 44 }
+    shared_examples_for 'tlv_set_default' do |kind, test_subject|
+      context "with #{kind} test" do
+        let(:test_default_value_example) do
+          test_tlv.tlv_set_default(ivar_name, default)
+        end
+        let(:test_default_block_example) do
+          test_tlv.tlv_set_default(ivar_name) { default }
+        end
+        let(:default) { 44 }
 
-      before do
-        # set the ivar to nil
-        test_tlv.instance_variable_set(ivar_sym, nil)
-      end
+        before do
+          # set the ivar to nil
+          test_tlv.instance_variable_set(ivar_sym, nil)
+        end
 
-      shared_examples_for 'tlv_set_default' do |kind, test_subject|
-        context "with #{kind} test" do
-          subject { send(test_subject) }
+        subject { send(test_subject) }
 
-          it "assigns the #{kind} on the existing TLVar" do
+        it "assigns the #{kind} on the existing TLVar" do
+          subject
+          expect(test_tlv.tlv_default(ivar_name)).to eq default
+        end
+
+        context 'with existing TLVars' do
+          before { test_tlv.tlv_init(ivar_name, default) }
+
+          it 'does not create new TLVar instance' do
+            expect(test_tlv).to_not receive(:tlv_new)
+            subject
+          end
+
+          it 'sets the default' do
             subject
             expect(test_tlv.tlv_default(ivar_name)).to eq default
           end
+        end
 
-          context 'with existing TLVars' do
-            before { test_tlv.tlv_init(ivar_name, default) }
+        context 'with an empty instance' do
+          before { test_tlv.instance_variable_set(ivar_sym, nil) }
 
-            it 'does not create new TLVar instance' do
-              expect(test_tlv).to_not receive(:tlv_new)
-              subject
-            end
-
-            it 'sets the default' do
-              subject
-              expect(test_tlv.tlv_default(ivar_name)).to eq default
-            end
+          it 'creates a new TLV' do
+            expect(test_tlv).to receive(:tlv_new)
+            subject
           end
 
-          context 'with an empty instance' do
-            before { test_tlv.instance_variable_set(ivar_sym, nil) }
-
-            it 'creates a new TLV' do
-              expect(test_tlv).to receive(:tlv_new)
-              subject
-            end
-
-            it 'installs the default' do
-              subject
-              expect(test_tlv.tlv_default(ivar_name)).to eq default
-            end
+          it 'installs the default' do
+            subject
+            expect(test_tlv.tlv_default(ivar_name)).to eq default
           end
         end
-      end
 
+        it 'returns the default value' do
+          expect(subject).to eq default
+        end
+      end
+    end
+
+    describe '#tlv_set_default' do
       it_behaves_like 'tlv_set_default', 'default value', :test_default_value_example
       it_behaves_like 'tlv_set_default', 'default block', :test_default_block_example
 
@@ -374,6 +433,11 @@ RSpec.describe ThreadLocalVarAccessors do
           expect { subject }.to raise_error(ArgumentError)
         end
       end
+    end
+
+    describe '#tlv_init' do
+      it_behaves_like 'tlv_set_default', 'default value', :test_default_value_example, :value
+      it_behaves_like 'tlv_set_default', 'default block', :test_default_block_example, :value
     end
   end
 end
