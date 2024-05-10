@@ -1,3 +1,8 @@
 module ThreadLocalVarAccessors
-  VERSION = '1.3.0'
+  RELEASES = [
+    ['1.3.1', '2024-05-09'],
+    ['1.3.0', '2023-05-04']
+  ].freeze
+
+  VERSION = RELEASES[0][0]
 end

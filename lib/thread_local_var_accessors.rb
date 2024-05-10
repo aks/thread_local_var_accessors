@@ -160,7 +160,7 @@ require 'concurrent-ruby'
 #
 #     def timeout=(value)
 #       var = instance_variable_get(:@timeout) ||
-#             instance_variable_get(:@timeout, Concurrent::ThreadLocalVar.new)
+#             instance_variable_set(:@timeout, Concurrent::ThreadLocalVar.new)
 #       var.value = block_given? ? yield(var.value) : value
 #     end
 #
@@ -277,7 +277,7 @@ module ThreadLocalVarAccessors
   # Creates a new TLVar with the given default value or block.
   # Equivalent to:
   #     @name = ThreadLocalVar.new(block_given? ? yield : default)
-  def tlv_new(name, default=nil, &block)
+  def tlv_new(name, default = nil, &block)
     instance_variable_set(
       name.to_ivar,
       Concurrent::ThreadLocalVar.new(default, &block)
@@ -291,7 +291,7 @@ module ThreadLocalVarAccessors
   #     @name ||= ThreadLocalVar.new
   #     @name.instance_variable_set(:@default, block_given? ? yield : default)
   #     @name.value
-  def tlv_init(name, default=nil, &block)
+  def tlv_init(name, default = nil, &block)
     tlv_set_default(name, default, &block)
     tlv_get(name)
   end
@@ -310,18 +310,16 @@ module ThreadLocalVarAccessors
   # Sets the default value or block for the TLV _(which is applied across all threads)_.
   # Creates a new TLV if the instance variable is not initialized.
   # @return [Object] the effective default value of the TLV instance variable
-  def tlv_set_default(name, default=nil, &block)1
+  def tlv_set_default(name, default = nil, &block)
+    1
     tlv = instance_variable_get(name.to_ivar)
     if tlv
-      raise ArgumentError, "tlv_set_default: can only use a default or a block, not both" if default && block
+      raise ArgumentError, 'tlv_set_default: can only use a default or a block, not both' if default && block
 
-      if block
-        tlv.instance_variable_set(:@default_block, block)
-        tlv.instance_variable_set(:@default, nil)
-      else
-        tlv.instance_variable_set(:@default_block, nil)
-        tlv.instance_variable_set(:@default, default)
-      end
+      # in both cases, the default is set to the given value, only one of which
+      # can be given at a time.
+      tlv.instance_variable_set(:@default_block, block)
+      tlv.instance_variable_set(:@default, default)
       tlv
     else
       tlv = tlv_new(name, default, &block)
