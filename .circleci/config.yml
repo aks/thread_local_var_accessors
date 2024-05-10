@@ -7,7 +7,7 @@ version: 2.1
 defaults: &DEFAULTS
   resource_class: small
   docker:
-    - image: cimg/ruby:2.7
+    - image: cimg/ruby:3.1
 
       environment:
         BUNDLE_JOBS: 3
@@ -120,7 +120,7 @@ jobs:
 
       - deploy:
           name: Release and push
-          command: bundle exec rake install
+          command: bundle exec rake release
 
 workflows:
   version: 2
