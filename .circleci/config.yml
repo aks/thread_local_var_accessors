@@ -112,13 +112,7 @@ jobs:
       - *attach_workspace_to_repo
       - *restore_gem_cache
       - *set_bundler_version
-      - *install_bundler
-      - *configure_bundler
-      - *install_dependencies
-      - *save_gem_cache
-      - *build_package
-
-      - deploy:
+      - run:
           name: Release and push
           command: bundle exec rake release
 

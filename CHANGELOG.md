@@ -1,3 +1,9 @@
+2024-07-24: Version 1.4.0
+- updated concurrent-ruby to 1.3.3 (from 1.2.2)
+- updated development gems to latest versions
+- removed innocuous misplaced value
+- simplified the CI release steps
+
 2024-05-09: Version 1.3.1
 - DRYed up the `tlv_default` method
 - Changed CI to support "release" task on the main branch

@@ -311,7 +311,6 @@ module ThreadLocalVarAccessors
   # Creates a new TLV if the instance variable is not initialized.
   # @return [Object] the effective default value of the TLV instance variable
   def tlv_set_default(name, default = nil, &block)
-    1
     tlv = instance_variable_get(name.to_ivar)
     if tlv
       raise ArgumentError, 'tlv_set_default: can only use a default or a block, not both' if default && block
