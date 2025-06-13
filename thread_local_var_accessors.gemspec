@@ -12,6 +12,7 @@ Gem::Specification.new do |s|
   s.licenses      = ['MIT']
   s.summary       = 'Ruby gem to make ThreadLocalVars easy to use'
   s.description   = 'Provides methods to declare and use ThreadLocalVar instance variables'
+  s.required_ruby_version = ">= 3.3"
 
   s.files         = Dir.glob('{bin/*,lib/**/*,[A-Z]*}')
   s.platform      = Gem::Platform::RUBY

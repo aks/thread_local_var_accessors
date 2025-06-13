@@ -1,3 +1,7 @@
+2025-06-13: Version 1.4.1
+- set default ruby version to 3.3.8
+- added ruby 3.3 to the CI test matrix
+
 2024-07-24: Version 1.4.0
 - updated concurrent-ruby to 1.3.3 (from 1.2.2)
 - updated development gems to latest versions
