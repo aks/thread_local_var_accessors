@@ -7,7 +7,7 @@ version: 2.1
 defaults: &DEFAULTS
   resource_class: small
   docker:
-    - image: cimg/ruby:3.1
+    - image: cimg/ruby:3.3
 
       environment:
         BUNDLE_JOBS: 3
